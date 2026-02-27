@@ -3,54 +3,53 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Daily Brain Quest</title>
+    <title>Daily Brain Quest Pro</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; display: flex; justify-content: center; padding: 20px; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; display: flex; justify-content: center; padding: 20px; }
         #game-container { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 100%; max-width: 600px; text-align: center; }
         .hidden { display: none; }
-        button { background: #4A90E2; color: white; border: none; padding: 12px 25px; border-radius: 8px; cursor: pointer; font-size: 16px; margin: 10px; transition: 0.3s; }
-        button:hover { background: #357ABD; }
+        button { background: #4A90E2; color: white; border: none; padding: 12px 25px; border-radius: 8px; cursor: pointer; font-size: 16px; margin: 10px; transition: 0.2s; }
         .option-btn { display: block; width: 100%; margin: 10px 0; background: #f8f9fa; color: #333; border: 2px solid #e9ecef; }
-        .option-btn:hover { background: #e9ecef; border-color: #4A90E2; }
+        
+        /* Feedback Colors */
+        .correct { background-color: #2ecc71 !important; color: white !important; border-color: #27ae60 !important; }
+        .wrong { background-color: #e74c3c !important; color: white !important; border-color: #c0392b !important; }
+        
         #stats { display: flex; justify-content: space-between; margin-bottom: 20px; font-weight: bold; color: #555; }
+        #category-display { font-size: 0.8em; text-transform: uppercase; color: #4A90E2; letter-spacing: 1px; margin-bottom: 10px;}
         #quote-area { margin-top: 20px; font-style: italic; color: #666; border-top: 1px solid #eee; padding-top: 20px; }
-        h2 { color: #2C3E50; }
-        .category-tag { font-size: 0.8em; text-transform: uppercase; color: #4A90E2; letter-spacing: 1px; }
     </style>
 </head>
 <body>
 
 <div id="game-container">
-    <!-- Setup Screen -->
     <div id="setup-screen">
         <h2>Daily Brain Quest</h2>
-        <input type="text" id="username" placeholder="Enter your name" style="padding: 10px; border-radius: 5px; border: 1px solid #ccc;"><br>
-        <p>Select Duration:</p>
+        <input type="text" id="username" placeholder="Enter your name" style="padding: 10px; border-radius: 5px; border: 1px solid #ccc; width: 80%;"><br>
+        <p>Select Play Time:</p>
         <button onclick="startGame(1)">1 Min</button>
         <button onclick="startGame(5)">5 Mins</button>
         <button onclick="startGame(10)">10 Mins</button>
-        <button onclick="startGame(20)">20 Mins</button>
         <div id="user-history"></div>
     </div>
 
-    <!-- Game Screen -->
     <div id="game-screen" class="hidden">
         <div id="stats">
             <span>Time: <span id="timer">0:00</span></span>
             <span>Score: <span id="score">0</span></span>
         </div>
-        <div class="category-tag" id="category-display">Category</div>
-        <h3 id="question-text">Question goes here?</h3>
+        <div id="category-display">Category</div>
+        <h3 id="question-text">Loading...</h3>
         <div id="options-container"></div>
+        <p id="feedback-text" style="font-weight: bold; min-height: 20px;"></p>
     </div>
 
-    <!-- Result Screen -->
     <div id="result-screen" class="hidden">
-        <h2>Time's Up!</h2>
+        <h2>Session Complete!</h2>
         <p id="final-score-text"></p>
         <p id="high-score-text"></p>
         <div id="quote-area"></div>
-        <button onclick="location.reload()">Play Again</button>
+        <button onclick="location.reload()">Back to Menu</button>
     </div>
 </div>
 
@@ -59,49 +58,34 @@
     let timeLeft = 0;
     let timerInterval;
     let currentUser = "";
+    let lastQuestions = JSON.parse(localStorage.getItem('lastQuestions') || "[]");
 
-    const quotes = [
-        "Believe you can and you're halfway there.",
-        "The only way to do great work is to love what you do.",
-        "Success is not final, failure is not fatal: it is the courage to continue that counts.",
-        "Your mind is a muscle. Keep exercising it!",
-        "Knowledge increases by sharing but also by testing."
-    ];
-
-    // Static Question Pool for Trivia
     const triviaData = [
-        { cat: "Hindu Mythology", q: "Who is the God of Preservation in the Trimurti?", a: "Vishnu", o: ["Shiva", "Vishnu", "Brahma", "Indra"] },
-        { cat: "Hindu Mythology", q: "Which epic narrates the life of Lord Rama?", a: "Ramayana", o: ["Mahabharata", "Ramayana", "Vedas", "Puranas"] },
-        { cat: "Geography", q: "Which is the largest continent by land area?", a: "Asia", o: ["Africa", "Asia", "Europe", "North America"] },
-        { cat: "Geography", q: "Which river is the longest in the world?", a: "Nile", o: ["Amazon", "Nile", "Yangtze", "Mississippi"] },
-        { cat: "World Facts", q: "Which country is known as the Land of the Rising Sun?", a: "Japan", o: ["China", "Japan", "Thailand", "South Korea"] },
-        { cat: "World Facts", q: "What is the smallest country in the world?", a: "Vatican City", o: ["Monaco", "Malta", "Vatican City", "San Marino"] }
+        { id: 1, cat: "Hindu Mythology", q: "In the Ramayana, which herbal medicine did Hanuman carry to save Lakshmana?", a: "Sanjeevani", o: ["Sanjeevani", "Tulsi", "Ashwagandha", "Soma"] },
+        { id: 2, cat: "Hindu Mythology", q: "Who was the biological mother of Karna in the Mahabharata?", a: "Kunti", o: ["Gandhari", "Kunti", "Madri", "Satyavati"] },
+        { id: 3, cat: "Hindu Mythology", q: "What was the name of Lord Krishna's conch shell used in the Kurukshetra war?", a: "Panchajanya", o: ["Devadatta", "Panchajanya", "Paundra", "Anantavijaya"] },
+        { id: 4, cat: "Hindu Mythology", q: "Who composed the original Sanskrit Ramayana?", a: "Valmiki", o: ["Vyasa", "Valmiki", "Tulsidas", "Agastya"] },
+        { id: 5, cat: "Hindu Mythology", q: "Which Kaurava brother attempted to save Draupadi during the disrobing incident?", a: "Vikarna", o: ["Dushasana", "Vikarna", "Yuyutsu", "Ashwatthama"] },
+        { id: 6, cat: "Geography", q: "Which country has the longest coastline in the world?", a: "Canada", o: ["Russia", "Canada", "Australia", "USA"] },
+        { id: 7, cat: "World Facts", q: "In which year did the Titanic sink?", a: "1912", o: ["1905", "1912", "1920", "1898"] }
     ];
 
-    // Load user high score on start
     window.onload = () => {
         const lastUser = localStorage.getItem('lastUser');
         if(lastUser) {
             document.getElementById('username').value = lastUser;
-            showHighScores(lastUser);
+            const high = localStorage.getItem(`highScore_${lastUser}`) || 0;
+            document.getElementById('user-history').innerHTML = `High Score: <b>${high}</b>`;
         }
     };
 
-    function showHighScores(user) {
-        const high = localStorage.getItem(`highScore_${user}`) || 0;
-        document.getElementById('user-history').innerHTML = `<p>Welcome back, ${user}! <br> Your High Score: <b>${high}</b></p>`;
-    }
-
     function startGame(mins) {
-        currentUser = document.getElementById('username').value || "Player 1";
+        currentUser = document.getElementById('username').value || "Player";
         localStorage.setItem('lastUser', currentUser);
-        
         score = 0;
         timeLeft = mins * 60;
-        
         document.getElementById('setup-screen').classList.add('hidden');
         document.getElementById('game-screen').classList.remove('hidden');
-        
         startTimer();
         nextQuestion();
     }
@@ -112,37 +96,43 @@
             let m = Math.floor(timeLeft / 60);
             let s = timeLeft % 60;
             document.getElementById('timer').innerText = `${m}:${s < 10 ? '0'+s : s}`;
-            
             if (timeLeft <= 0) endGame();
         }, 1000);
     }
 
     function nextQuestion() {
-        const rand = Math.floor(Math.random() * 6) + 1;
+        document.getElementById('feedback-text').innerText = "";
         let qObj;
+        const roll = Math.floor(Math.random() * 10);
 
-        if (rand === 1 || rand === 2 || rand === 6) {
-            // Trivia categories
-            qObj = triviaData[Math.floor(Math.random() * triviaData.length)];
-        } else if (rand === 3) {
-            // Math
-            let a = Math.floor(Math.random() * 20);
-            let b = Math.floor(Math.random() * 20);
-            qObj = { cat: "Basic Math", q: `What is ${a} + ${b}?`, a: (a+b).toString(), o: shuffle([(a+b), (a+b+2), (a+b-1), (a+b+5)]) };
-        } else if (rand === 4) {
-            // Patterns
-            let start = Math.floor(Math.random() * 10);
-            let step = Math.floor(Math.random() * 5) + 2;
-            let sequence = [start, start+step, start+step*2, "?"];
-            qObj = { cat: "Pattern", q: `Find the missing number: ${sequence.join(", ")}`, a: (start+step*3).toString(), o: shuffle([(start+step*3), (start+step*3)+2, (start+step*3)-1, 100]) };
+        if (roll < 4) { // Mythology/Facts
+            // Filter out the last 5 IDs
+            let available = triviaData.filter(q => !lastQuestions.includes(q.id));
+            if (available.length === 0) { lastQuestions = []; available = triviaData; }
+            qObj = available[Math.floor(Math.random() * available.length)];
+            lastQuestions.push(qObj.id);
+            if(lastQuestions.length > 5) lastQuestions.shift();
+            localStorage.setItem('lastQuestions', JSON.stringify(lastQuestions));
         } else {
-            // Order numbers
-            let nums = [Math.floor(Math.random()*50), Math.floor(Math.random()*50), Math.floor(Math.random()*50)].sort((a,b)=>a-b);
-            let display = [...nums].sort(() => Math.random() - 0.5);
-            qObj = { cat: "Order the Numbers", q: `Which is the correct ascending order for: ${display.join(", ")}?`, a: nums.join(", "), o: [nums.join(", "), nums.reverse().join(", "), "Random Order", "None"] };
+            // Procedural generation (Math/Patterns)
+            qObj = generateMathQuestion(roll);
         }
-
         renderQuestion(qObj);
+    }
+
+    function generateMathQuestion(roll) {
+        if (roll < 6) {
+            let a = Math.floor(Math.random() * 50);
+            let b = Math.floor(Math.random() * 50);
+            return { cat: "Basic Math", q: `Solve: ${a} + ${b}`, a: (a+b).toString(), o: shuffle([(a+b), (a+b+5), (a+b-3), (a+b+10)]) };
+        } else if (roll < 8) {
+            let s = Math.floor(Math.random() * 10);
+            let d = Math.floor(Math.random() * 5) + 2;
+            return { cat: "Patterns", q: `Next number: ${s}, ${s+d}, ${s+d*2}, ...`, a: (s+d*3).toString(), o: shuffle([(s+d*3), (s+d*3)+d, (s+d*3)-1, 0]) };
+        } else {
+            let n = [Math.floor(Math.random()*100), Math.floor(Math.random()*100), Math.floor(Math.random()*100)].sort((a,b)=>a-b);
+            return { cat: "Order", q: `Ascending: ${[...n].sort(()=>Math.random()-.5).join(", ")}`, a: n.join(", "), o: [n.join(", "), n.reverse().join(", "), "None", "Random"] };
+        }
     }
 
     function renderQuestion(q) {
@@ -155,36 +145,40 @@
             const btn = document.createElement('button');
             btn.className = "option-btn";
             btn.innerText = opt;
-            btn.onclick = () => {
-                if(opt.toString() === q.a.toString()) {
-                    score += 10;
-                    document.getElementById('score').innerText = score;
-                }
-                nextQuestion();
-            };
+            btn.onclick = () => checkAnswer(btn, opt, q.a);
             container.appendChild(btn);
         });
+    }
+
+    function checkAnswer(btn, selected, correct) {
+        const buttons = document.querySelectorAll('.option-btn');
+        buttons.forEach(b => b.disabled = true); // Prevent double clicking
+
+        if(selected.toString() === correct.toString()) {
+            btn.classList.add('correct');
+            score += 10;
+            document.getElementById('score').innerText = score;
+        } else {
+            btn.classList.add('wrong');
+            // Highlight the correct one
+            buttons.forEach(b => { if(b.innerText === correct.toString()) b.classList.add('correct'); });
+        }
+
+        setTimeout(nextQuestion, 1500); // 1.5 second pause to see the answer
     }
 
     function endGame() {
         clearInterval(timerInterval);
         document.getElementById('game-screen').classList.add('hidden');
         document.getElementById('result-screen').classList.remove('hidden');
-        
-        const highScore = localStorage.getItem(`highScore_${currentUser}`) || 0;
-        if (score > highScore) {
-            localStorage.setItem(`highScore_${currentUser}`, score);
-        }
-
-        document.getElementById('final-score-text').innerText = `Your Score: ${score}`;
-        document.getElementById('high-score-text').innerText = `Best Score: ${Math.max(score, highScore)}`;
-        document.getElementById('quote-area').innerText = `"${quotes[Math.floor(Math.random() * quotes.length)]}"`;
+        const high = localStorage.getItem(`highScore_${currentUser}`) || 0;
+        if (score > high) localStorage.setItem(`highScore_${currentUser}`, score);
+        document.getElementById('final-score-text').innerText = `Final Score: ${score}`;
+        document.getElementById('high-score-text').innerText = `Your High Score: ${Math.max(score, high)}`;
+        document.getElementById('quote-area').innerText = `"Arise, awake, and stop not until the goal is reached." - Swami Vivekananda`;
     }
 
-    function shuffle(array) {
-        return array.sort(() => Math.random() - 0.5);
-    }
+    function shuffle(arr) { return arr.sort(() => Math.random() - 0.5); }
 </script>
-
 </body>
 </html>
