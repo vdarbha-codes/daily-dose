@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Daily Brain Quest: Memory Edition</title>
+    <title>Daily Brain Quest: 15-Day Rotation</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; display: flex; justify-content: center; padding: 20px; }
         #game-container { background: white; padding: 30px; border-radius: 20px; box-shadow: 0 15px 35px rgba(0,0,0,0.1); width: 100%; max-width: 650px; text-align: center; position: relative; }
@@ -12,22 +12,16 @@
         .cat-btn { background: #95a5a6; min-width: 130px; }
         .cat-btn.selected { background: #27ae60; }
         .option-btn { display: block; width: 100%; margin: 10px 0; background: #f8f9fa; color: #333; border: 2px solid #eee; text-align: left; padding-left: 20px; }
-        .correct { background-color: #2ecc71 !important; color: white !important; border-color: #27ae60 !important; }
-        .wrong { background-color: #e74c3c !important; color: white !important; border-color: #c0392b !important; }
+        .correct { background-color: #2ecc71 !important; color: white !important; }
+        .wrong { background-color: #e74c3c !important; color: white !important; }
         #stats { display: flex; justify-content: space-between; margin-bottom: 20px; font-weight: bold; color: #34495e; background: #ecf0f1; padding: 10px; border-radius: 10px; }
-        #streak-display { color: #f39c12; }
-        .category-tag { font-size: 0.75em; color: #4A90E2; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 10px; }
-        #streak-pop { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: #f39c12; color: white; padding: 8px 20px; border-radius: 30px; font-weight: bold; display: none; z-index: 100; }
     </style>
 </head>
 <body>
 
 <div id="game-container">
-    <div id="streak-pop">🔥 MEGA STREAK! +20</div>
-    
     <div id="setup-screen">
-        <h1 style="color: #2c3e50;">Brain Quest</h1>
-        <p id="session-info" style="font-size: 0.9em; color: #7f8c8d;"></p>
+        <h1 style="color: #2c3e50;">Daily Brain Quest</h1>
         <input type="text" id="username" placeholder="Enter Player Name" style="padding: 12px; border-radius: 8px; border: 2px solid #ddd; width: 80%; margin-bottom: 15px;">
         
         <p><strong>Step 1: Choose Categories</strong></p>
@@ -40,11 +34,11 @@
             <button class="cat-btn selected" onclick="toggleCat(this, 'Math/Patterns')">Math/Logic</button>
         </div>
 
-        <p><strong>Step 2: Game Length</strong></p>
+        <p><strong>Step 2: Set Duration</strong></p>
         <button onclick="startGame(1)">1 Min</button>
         <button onclick="startGame(5)">5 Mins</button>
         <button onclick="startGame(10)">10 Mins</button>
-        <div id="high-score-display" style="margin-top: 20px; font-weight: bold; color: #2ecc71;"></div>
+        <div id="high-score-display" style="margin-top: 20px; color: #2ecc71; font-weight: bold;"></div>
     </div>
 
     <div id="game-screen" class="hidden">
@@ -53,53 +47,41 @@
             <span id="streak-display">🔥 0</span>
             <span>🏆 <span id="score">0</span></span>
         </div>
-        <div class="category-tag" id="category-display">Category</div>
-        <h2 id="question-text" style="color: #2c3e50; font-size: 1.3em;">Question?</h2>
+        <div id="category-display" style="text-transform: uppercase; font-size: 0.8em; color: #4A90E2; font-weight: bold;"></div>
+        <h2 id="question-text" style="color: #2c3e50; min-height: 60px;"></h2>
         <div id="options-container"></div>
     </div>
 
     <div id="result-screen" class="hidden">
-        <h2 style="color: #2c3e50;">Session Over!</h2>
-        <p id="final-score-text" style="font-size: 2em; margin: 10px 0;"></p>
-        <p id="best-score-text" style="color: #7f8c8d;"></p>
-        <div id="quote-area" style="font-style: italic; background: #f9f9f9; padding: 20px; border-radius: 10px; margin: 20px 0;"></div>
-        <button onclick="location.reload()">Start New Session</button>
+        <h2>Session Complete</h2>
+        <p id="final-score-text" style="font-size: 1.8em;"></p>
+        <div id="quote-area" style="font-style: italic; background: #f9f9f9; padding: 15px; border-radius: 10px; margin: 20px 0;"></div>
+        <button onclick="location.reload()">Return Home</button>
     </div>
 </div>
 
 <script>
-    let score = 0, streak = 0, timeLeft = 0, timerInterval, currentSession = 1;
+    let score = 0, streak = 0, timeLeft = 0, timerInterval, currentUser = "";
     let selectedCats = ['Hindu Mythology', 'Harry Potter', 'History', 'Geography', 'Current Events', 'Math/Patterns'];
-    
-    // AUTHENTIC QUESTION POOL
+    const FIFTEEN_DAYS_MS = 15 * 24 * 60 * 60 * 1000;
+
     const triviaPool = [
-        { id: 101, cat: "Hindu Mythology", q: "In Valmiki's Ramayana, what was the specific name of Lord Rama's bow?", a: "Kodanda", o: ["Pinaka", "Kodanda", "Gandiva", "Sharanga"] },
-        { id: 102, cat: "Hindu Mythology", q: "Which son of Dhritarashtra famously sided with the Pandavas during the Kurukshetra war?", a: "Yuyutsu", o: ["Vikarna", "Yuyutsu", "Dushasana", "Chitrasena"] },
-        { id: 103, cat: "Hindu Mythology", q: "Who was the charioteer of Karna during his final battle with Arjuna?", a: "Shalya", o: ["Krishna", "Shalya", "Sanjaya", "Adhiratha"] },
-        { id: 104, cat: "Hindu Mythology", q: "In the Mahabharata, who was the biological father of Vidura?", a: "Vyasa", o: ["Shantanu", "Vyasa", "Pandu", "Bhishma"] },
-        { id: 201, cat: "Harry Potter", q: "What is the only book in the series where Harry does not encounter Lord Voldemort in person?", a: "Prisoner of Azkaban", o: ["Chamber of Secrets", "Prisoner of Azkaban", "Half-Blood Prince", "Deathly Hallows"] },
-        { id: 301, cat: "History", q: "Which US President signed the Emancipation Proclamation?", a: "Abraham Lincoln", o: ["George Washington", "Abraham Lincoln", "Thomas Jefferson", "Ulysses S. Grant"] },
-        { id: 401, cat: "Geography", q: "Which European city is built on 118 small islands separated by canals?", a: "Venice", o: ["Amsterdam", "Venice", "Bruges", "Stockholm"] },
-        { id: 501, cat: "Current Events", q: "Which nation launched the world's first fully AI-governed space station in early 2026?", a: "Japan", o: ["USA", "China", "Japan", "India"] }
+        { id: 101, cat: "Hindu Mythology", q: "Which righteous Kaurava brother protested the disrobing of Draupadi?", a: "Vikarna", o: ["Vikarna", "Yuyutsu", "Dushasana", "Chitrasena"] },
+        { id: 102, cat: "Hindu Mythology", q: "What was the name of Lord Krishna's conch shell?", a: "Panchajanya", o: ["Panchajanya", "Devadatta", "Anantavijaya", "Paundra"] },
+        { id: 201, cat: "Harry Potter", q: "What animal represents the Hufflepuff house?", a: "Badger", o: ["Lion", "Eagle", "Snake", "Badger"] },
+        { id: 301, cat: "History", q: "Who was the primary author of the US Declaration of Independence?", a: "Thomas Jefferson", o: ["John Adams", "Thomas Jefferson", "Benjamin Franklin", "George Washington"] },
+        { id: 401, cat: "Geography", q: "Which country has the most natural lakes in the world?", a: "Canada", o: ["Russia", "Canada", "USA", "Brazil"] },
+        { id: 501, cat: "Current Events", q: "In 2026, which city hosted the Super Bowl LX?", a: "Santa Clara", o: ["New Orleans", "Santa Clara", "Las Vegas", "Miami"] }
     ];
 
     window.onload = () => {
-        // Track sessions to avoid repeats for 5 sessions
-        currentSession = parseInt(localStorage.getItem('sessionCount') || "0") + 1;
-        localStorage.setItem('sessionCount', currentSession);
-        document.getElementById('session-info').innerText = `Your Session #${currentSession}`;
-
         const lastUser = localStorage.getItem('lastUser');
         if(lastUser) {
             document.getElementById('username').value = lastUser;
-            updateHighScoreUI(lastUser);
+            const high = localStorage.getItem(`highScore_${lastUser}`) || 0;
+            document.getElementById('high-score-display').innerText = `Your Best Score: ${high}`;
         }
     };
-
-    function updateHighScoreUI(user) {
-        const high = localStorage.getItem(`highScore_${user}`) || 0;
-        document.getElementById('high-score-display').innerText = `Best Score: ${high}`;
-    }
 
     function toggleCat(btn, cat) {
         btn.classList.toggle('selected');
@@ -107,16 +89,13 @@
     }
 
     function startGame(mins) {
-        const name = document.getElementById('username').value.trim() || "Seeker";
-        localStorage.setItem('lastUser', name);
-        if (selectedCats.length === 0) return alert("Select a category first!");
-        
+        currentUser = document.getElementById('username').value.trim() || "Seeker";
+        localStorage.setItem('lastUser', currentUser);
+        if (selectedCats.length === 0) return alert("Select a category!");
         score = 0; streak = 0; timeLeft = mins * 60;
         document.getElementById('setup-screen').classList.add('hidden');
         document.getElementById('game-screen').classList.remove('hidden');
-        
-        startTimer();
-        nextQuestion();
+        startTimer(); nextQuestion();
     }
 
     function startTimer() {
@@ -128,32 +107,35 @@
     }
 
     function nextQuestion() {
-        let qObj;
         const currentCat = selectedCats[Math.floor(Math.random() * selectedCats.length)];
-
         if (currentCat === "Math/Patterns") {
-            qObj = generateLogicQ();
-        } else {
-            // Memory Logic: Filter out questions used in current session or last 5 sessions
-            let history = JSON.parse(localStorage.getItem('qHistory') || "{}");
-            
-            let available = triviaPool.filter(q => {
-                const expiry = history[q.id] || 0;
-                return q.cat === currentCat && expiry < currentSession;
-            });
-
-            if (available.length === 0) {
-                // If pool is exhausted for this session/gap, reset for this category
-                available = triviaPool.filter(q => q.cat === currentCat);
-            }
-
-            qObj = available[Math.floor(Math.random() * available.length)];
-            
-            // Mark question to expire in 5 sessions (current + 5)
-            history[qObj.id] = currentSession + 5;
-            localStorage.setItem('qHistory', JSON.stringify(history));
+            renderQuestion(generateLogicQ());
+            return;
         }
+
+        const now = Date.now();
+        let history = JSON.parse(localStorage.getItem(`qHistory_${currentUser}`) || "{}");
+        
+        // Filter: Keep only questions that haven't been answered in the last 15 days
+        let available = triviaPool.filter(q => {
+            const lastAnswered = history[q.id] || 0;
+            return q.cat === currentCat && (now - lastAnswered > FIFTEEN_DAYS_MS);
+        });
+
+        // If all are used, reset only that category's history for the user
+        if (available.length === 0) {
+            available = triviaPool.filter(q => q.cat === currentCat);
+        }
+
+        const qObj = available[Math.floor(Math.random() * available.length)];
+        history[qObj.id] = now;
+        localStorage.setItem(`qHistory_${currentUser}`, JSON.stringify(history));
         renderQuestion(qObj);
+    }
+
+    function generateLogicQ() {
+        const a = Math.floor(Math.random()*50), b = Math.floor(Math.random()*50);
+        return { cat: "Math/Logic", q: `Solve: ${a} + ${b}`, a: (a+b).toString(), o: shuffle([a+b, a+b+5, a+b-3, a+b+10]) };
     }
 
     function renderQuestion(q) {
@@ -161,23 +143,18 @@
         document.getElementById('question-text').innerText = q.q;
         const container = document.getElementById('options-container');
         container.innerHTML = "";
-        
         q.o.forEach(opt => {
             const btn = document.createElement('button');
             btn.className = "option-btn";
             btn.innerText = opt;
             btn.onclick = () => {
-                const allBtns = document.querySelectorAll('.option-btn');
-                allBtns.forEach(b => b.disabled = true);
-                
+                const btns = document.querySelectorAll('.option-btn');
+                btns.forEach(b => b.disabled = true);
                 if (opt.toString() === q.a.toString()) {
-                    btn.classList.add('correct');
-                    score += 10; streak++;
-                    if (streak % 5 === 0) { score += 20; flashStreak(); }
+                    btn.classList.add('correct'); score += 10; streak++;
                 } else {
-                    btn.classList.add('wrong');
-                    streak = 0;
-                    allBtns.forEach(b => { if(b.innerText === q.a.toString()) b.classList.add('correct'); });
+                    btn.classList.add('wrong'); streak = 0;
+                    btns.forEach(b => { if(b.innerText === q.a.toString()) b.classList.add('correct'); });
                 }
                 document.getElementById('score').innerText = score;
                 document.getElementById('streak-display').innerText = `🔥 ${streak}`;
@@ -187,39 +164,17 @@
         });
     }
 
-    function flashStreak() {
-        const pop = document.getElementById('streak-pop');
-        pop.style.display = 'block';
-        setTimeout(() => pop.style.display = 'none', 1200);
-    }
-
-    function generateLogicQ() {
-        const type = Math.random();
-        if (type < 0.5) {
-            const a = Math.floor(Math.random()*40), b = Math.floor(Math.random()*40);
-            return { cat: "Math", q: `Solve: ${a} + ${b}`, a: (a+b).toString(), o: shuffle([a+b, a+b+4, a+b-2, a+b+10]) };
-        } else {
-            const s = Math.floor(Math.random()*5), d = Math.floor(Math.random()*6)+2;
-            return { cat: "Patterns", q: `Missing: ${s}, ${s+d}, ${s+d*2}, ?`, a: (s+d*3).toString(), o: shuffle([s+d*3, s+d*4, s+d*3+1, 0]) };
-        }
-    }
-
     function endGame() {
         clearInterval(timerInterval);
         document.getElementById('game-screen').classList.add('hidden');
         document.getElementById('result-screen').classList.remove('hidden');
-        
-        const user = localStorage.getItem('lastUser');
-        const high = Math.max(score, localStorage.getItem(`highScore_${user}`) || 0);
-        localStorage.setItem(`highScore_${user}`, high);
-        
-        document.getElementById('final-score-text').innerText = `Final Score: ${score}`;
-        document.getElementById('best-score-text').innerText = `Your High Score: ${high}`;
-        document.getElementById('quote-area').innerText = `"The only true wisdom is in knowing you know nothing." - Socrates`;
+        const high = Math.max(score, localStorage.getItem(`highScore_${currentUser}`) || 0);
+        localStorage.setItem(`highScore_${currentUser}`, high);
+        document.getElementById('final-score-text').innerText = `Total Score: ${score}`;
+        document.getElementById('quote-area').innerText = `"Arise, awake, and stop not until the goal is reached." - Swami Vivekananda`;
     }
 
     function shuffle(arr) { return arr.sort(() => Math.random() - 0.5); }
 </script>
-
 </body>
 </html>
