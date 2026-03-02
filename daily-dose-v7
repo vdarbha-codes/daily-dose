@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Daily Brain Quest: Logic Fix Edition</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; display: flex; justify-content: center; padding: 20px; }
+        #game-container { background: white; padding: 30px; border-radius: 20px; box-shadow: 0 15px 35px rgba(0,0,0,0.1); width: 100%; max-width: 650px; text-align: center; position: relative; }
+        .hidden { display: none; }
+        button { background: #4A90E2; color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; margin: 8px; font-weight: 600; }
+        .cat-btn.selected { background: #27ae60; border: 2px solid #1e8449; }
+        .option-btn { display: block; width: 100%; margin: 10px 0; background: #f8f9fa; border: 2px solid #eee; text-align: left; padding: 12px; cursor: pointer; border-radius: 8px; }
+        .correct { background-color: #2ecc71 !important; color: white; }
+        .wrong { background-color: #e74c3c !important; color: white; }
+        #stats { display: flex; justify-content: space-between; background: #ecf0f1; padding: 12px; border-radius: 10px; margin-bottom: 20px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="setup-screen">
+        <h1>Daily Brain Quest</h1>
+        <input type="text" id="username" placeholder="Enter Player Name" style="padding: 12px; border-radius: 8px; border: 2px solid #ddd; width: 80%; margin-bottom: 15px;">
+        
+        <p><strong>1. Select Categories:</strong></p>
+        <div id="cat-selection">
+            <button class="cat-btn selected" onclick="this.classList.toggle('selected')">Hindu Mythology</button>
+            <button class="cat-btn selected" onclick="this.classList.toggle('selected')">Harry Potter</button>
+            <button class="cat-btn selected" onclick="this.classList.toggle('selected')">History</button>
+            <button class="cat-btn selected" onclick="this.classList.toggle('selected')">Geography</button>
+            <button class="cat-btn selected" onclick="this.classList.toggle('selected')">Current Events</button>
+            <button class="cat-btn selected" onclick="this.classList.toggle('selected')">Math/Logic</button>
+        </div>
+
+        <p><strong>2. Duration:</strong></p>
+        <button onclick="startGame(1)">1 Min</button>
+        <button onclick="startGame(5)">5 Mins</button>
+        <button onclick="startGame(10)">10 Mins</button>
+        <div id="high-score-display" style="margin-top: 20px; color: #2ecc71; font-weight: bold;"></div>
+    </div>
+
+    <div id="game-screen" class="hidden">
+        <div id="stats">
+            <span>⏱️ <span id="timer">0:00</span></span>
+            <span>🔥 <span id="streak">0</span></span>
+            <span>🏆 <span id="score">0</span></span>
+        </div>
+        <div id="category-display" style="text-transform: uppercase; font-size: 0.8em; color: #4A90E2; font-weight: bold;"></div>
+        <h2 id="question-text" style="color: #2c3e50; min-height: 60px;"></h2>
+        <div id="options-container"></div>
+    </div>
+
+    <div id="result-screen" class="hidden">
+        <h2>Session Complete!</h2>
+        <p id="final-score-text" style="font-size: 2em; font-weight: bold;"></p>
+        <div id="quote-area" style="font-style: italic; background: #f9f9f9; padding: 20px; border-radius: 10px; margin: 20px 0;"></div>
+        <button onclick="location.reload()">Restart</button>
+    </div>
+</div>
+
+<script>
+    let score = 0, streak = 0, timeLeft = 0, timerInterval, currentUser = "";
+    let allQuestions = [];
+    let sessionUsedIds = []; // Temporary session storage
+    const FIFTEEN_DAYS_MS = 15 * 24 * 60 * 60 * 1000;
+
+    async function loadData() {
+        console.log("--- System: Fetching questions.json ---");
+        try {
+            const res = await fetch('questions.json');
+            allQuestions = await res.json();
+            console.log(`--- System: Loaded ${allQuestions.length} questions successfully ---`);
+        } catch(e) { 
+            console.error("--- Error: Could not find questions.json! ---"); 
+        }
+    }
+
+    function startGame(mins) {
+        currentUser = document.getElementById('username').value.trim() || "Seeker";
+        localStorage.setItem('lastUser', currentUser);
+        
+        const selected = Array.from(document.querySelectorAll('.cat-btn.selected')).map(b => b.innerText);
+        if (selected.length === 0) return alert("Please select a category!");
+        
+        score = 0; streak = 0; timeLeft = mins * 60;
+        sessionUsedIds = []; // Clear session memory
+        
+        console.log(`--- Session Started for ${currentUser}. Time: ${mins}m ---`);
+        
+        document.getElementById('setup-screen').classList.add('hidden');
+        document.getElementById('game-screen').classList.remove('hidden');
+        startTimer();
+        nextQuestion(selected);
+    }
+
+    function nextQuestion(categories) {
+        const currentCat = categories[Math.floor(Math.random() * categories.length)];
+        console.log(`--- Category Picked: ${currentCat} ---`);
+
+        if (currentCat === "Math/Logic") {
+            renderQuestion(generateLogicQ(), categories);
+            return;
+        }
+
+        const now = Date.now();
+        let globalHistory = JSON.parse(localStorage.getItem(`qHist_${currentUser}`) || "{}");
+        
+        // The Filtering Engine
+        let available = allQuestions.filter(q => {
+            const qIdStr = q.id.toString();
+            const lastUsedTimestamp = globalHistory[qIdStr] || 0;
+            
+            const isNotUsedInSession = !sessionUsedIds.includes(q.id);
+            const isOutside15DayWindow = (now - lastUsedTimestamp > FIFTEEN_DAYS_MS);
+
+            return q.cat === currentCat && isNotUsedInSession && isOutside15DayWindow;
+        });
+
+        console.log(`Found ${available.length} fresh questions for ${currentCat}`);
+
+        // Fallback 1: Ignore 15-day rule if category is empty, but KEEP session uniqueness
+        if (available.length === 0) {
+            console.warn("No questions outside 15-day window. Relaxing 15-day rule...");
+            available = allQuestions.filter(q => q.cat === currentCat && !sessionUsedIds.includes(q.id));
+        }
+
+        // Fallback 2: Reset session history for this category if truly exhausted
+        if (available.length === 0) {
+            console.error("CRITICAL: Category exhausted in this session. Resetting session memory for this category.");
+            sessionUsedIds = sessionUsedIds.filter(id => {
+                const q = allQuestions.find(item => item.id === id);
+                return q && q.cat !== currentCat;
+            });
+            available = allQuestions.filter(q => q.cat === currentCat);
+        }
+
+        const qObj = available[Math.floor(Math.random() * available.length)];
+        
+        // Update Trackers
+        sessionUsedIds.push(qObj.id);
+        globalHistory[qObj.id.toString()] = now;
+        localStorage.setItem(`qHist_${currentUser}`, JSON.stringify(globalHistory));
+        
+        console.log(`Question Selected: ID ${qObj.id}. Total Session Usage: ${sessionUsedIds.length}`);
+        renderQuestion(qObj, categories);
+    }
+
+    function generateLogicQ() {
+        const a = Math.floor(Math.random()*50), b = Math.floor(Math.random()*50);
+        const ans = a + b;
+        return { cat: "Math/Logic", q: `Solve: ${a} + ${b}`, a: ans, o: [ans, ans+5, ans-2, ans+10].sort(()=>Math.random()-.5) };
+    }
+
+    function renderQuestion(q, cats) {
+        document.getElementById('category-display').innerText = q.cat;
+        document.getElementById('question-text').innerText = q.q;
+        const container = document.getElementById('options-container');
+        container.innerHTML = "";
+        
+        q.o.forEach(opt => {
+            const btn = document.createElement('button');
+            btn.className = "option-btn";
+            btn.innerText = opt;
+            btn.onclick = () => {
+                const btns = document.querySelectorAll('.option-btn');
+                btns.forEach(b => b.disabled = true);
+                
+                if (opt.toString() === q.a.toString()) {
+                    btn.classList.add('correct');
+                    score += 10; streak++;
+                    console.log("Correct! +10 pts");
+                } else {
+                    btn.classList.add('wrong');
+                    streak = 0;
+                    console.log(`Wrong. Answer was: ${q.a}`);
+                    btns.forEach(b => { if(b.innerText == q.a) b.classList.add('correct'); });
+                }
+                document.getElementById('score').innerText = score;
+                document.getElementById('streak').innerText = streak;
+                setTimeout(() => nextQuestion(cats), 1300);
+            };
+            container.appendChild(btn);
+        });
+    }
+
+    function startTimer() {
+        timerInterval = setInterval(() => {
+            timeLeft--;
+            document.getElementById('timer').innerText = `${Math.floor(timeLeft/60)}:${(timeLeft%60).toString().padStart(2,'0')}`;
+            if (timeLeft <= 0) endGame();
+        }, 1000);
+    }
+
+    function endGame() {
+        clearInterval(timerInterval);
+        console.log("--- Session Complete ---");
+        document.getElementById('game-screen').classList.add('hidden');
+        document.getElementById('result-screen').classList.remove('hidden');
+        const high = Math.max(score, localStorage.getItem(`highScore_${currentUser}`) || 0);
+        localStorage.setItem(`highScore_${currentUser}`, high);
+        document.getElementById('final-score-text').innerText = `Score: ${score}`;
+        document.getElementById('quote-area').innerText = `"Success is not final, failure is not fatal: it is the courage to continue that counts." - Winston Churchill`;
+    }
+
+    window.onload = () => {
+        loadData();
+        const lastUser = localStorage.getItem('lastUser');
+        if(lastUser) {
+            document.getElementById('username').value = lastUser;
+            document.getElementById('high-score-display').innerText = `High Score: ${localStorage.getItem(`highScore_${lastUser}`) || 0}`;
+        }
+    };
+</script>
+</body>
+</html>
