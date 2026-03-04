@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>BrainGym - Self-Evolving Mental Fitness</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #fff; display: flex; justify-content: center; padding: 20px; }
+        #game-container { background: #16213e; padding: 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 100%; max-width: 600px; text-align: center; }
+        .hidden { display: none; }
+        button { background: #e94560; color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; margin: 8px; font-weight: bold; transition: 0.2s; }
+        button:hover { background: #ff4d6d; transform: scale(1.05); }
+        .option-btn { display: block; width: 100%; background: #0f3460; text-align: left; margin: 10px 0; padding: 15px; border: 1px solid #533483; color: white; border-radius: 8px; cursor: pointer; }
+        .correct { background: #27ae60 !important; }
+        .wrong { background: #c0392b !important; }
+        #stats { display: flex; justify-content: space-between; font-family: monospace; font-size: 1.4em; border-bottom: 2px solid #533483; padding-bottom: 10px; margin-bottom: 20px; }
+        input { padding: 12px; width: 80%; margin-bottom: 20px; border-radius: 8px; border: none; text-align: center; font-size: 1em; }
+        #status-area { font-size: 0.8em; color: #7f8c8d; margin-top: 15px; }
+        .reset-btn { background: #555; font-size: 0.7em; padding: 5px 10px; margin-top: 20px; opacity: 0.6; }
+        .reset-btn:hover { background: #e74c3c; opacity: 1; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <!-- Setup Screen -->
+    <div id="setup-screen">
+        <h1 style="color: #00d2ff; margin-bottom: 5px;">BrainGym</h1>
+        <p style="color: #7f8c8d; margin-bottom: 25px;">Daily Mental Fitness</p>
+        
+        <input type="text" id="username" placeholder="Enter Player Name">
+        
+        <p><strong>1. Select Workout Category:</strong></p>
+        <button onclick="selectCategory(9, 'General Knowledge')">🌍 GK</button>
+        <button onclick="selectCategory(20, 'Mythology')">🏺 Mythology</button>
+        <button onclick="setCategory(18, 'Science')">🧪 Science</button>
+        <button onclick="selectCategory(21, 'Sports')">🏅 Sports</button>
+        <button onclick="selectCategory(11, 'Movies')">🎬 Movies</button>
+        <p id="cat-label" style="color: #f39c12; font-weight: bold; margin-top: 10px;">Selected: None</p>
+
+        <p><strong>2. Select Duration:</strong></p>
+        <button onclick="startGame(1)">1 Min</button>
+        <button onclick="startGame(5)">5 Mins</button>
+        <button onclick="startGame(10)">10 Mins</button>
+
+        <div id="status-area">Ready to train.</div>
+        <button class="reset-btn" onclick="resetMemory()">Reset All Memory & History</button>
+    </div>
+
+    <!-- Game Screen -->
+    <div id="game-screen" class="hidden">
+        <div id="stats">
+            <span>⏱️ <span id="timer">0:00</span></span>
+            <span>🏆 <span id="score">0</span></span>
+        </div>
+        <h3 id="question-text">Loading Workout...</h3>
+        <div id="options-container"></div>
+        <div id="feedback" style="min-height: 40px; margin-top: 15px; color: #f39c12; font-weight: bold;"></div>
+    </div>
+
+    <!-- Result Screen -->
+    <div id="result-screen" class="hidden">
+        <h2 style="color: #00d2ff;">Workout Complete!</h2>
+        <p id="final-score" style="font-size: 2em; font-weight: bold;"></p>
+        <p id="encouragement" style="font-style: italic; color: #7f8c8d;"></p>
+        <button onclick="location.reload()">Back to Lobby</button>
+    </div>
+</div>
+
+<script>
+    let db, currentPool = [], score = 0, timeLeft = 0, timerInterval, selectedCatID = null, currentUser = "";
+    const FIFTEEN_DAYS = 15 * 24 * 60 * 60 * 1000;
+
+    // 1. Initialize IndexedDB (The Garden)
+    const request = indexedDB.open("BrainGym_v1", 1);
+    request.onupgradeneeded = e => {
+        db = e.target.result;
+        db.createObjectStore("questions", { keyPath: "question" });
+    };
+    request.onsuccess = e => {
+        db = e.target.result;
+        seedDatabase(); // Only adds if new
+    };
+
+    async function seedDatabase() {
+        try {
+            const res = await fetch('questions.json');
+            const data = await res.json();
+            const tx = db.transaction("questions", "readwrite");
+            const store = tx.objectStore("questions");
+            
+            Object.keys(data).forEach(catId => {
+                data[catId].forEach(q => {
+                    q.catId = parseInt(catId);
+                    store.put(q); // Saves to permanent storage
+                });
+            });
+            updateStatus();
+        } catch (e) { console.warn("Seed file questions.json not found. Using API only."); }
+    }
+
+    async function updateStatus() {
+        const tx = db.transaction("questions", "readonly");
+        const countReq = tx.objectStore("questions").count();
+        countReq.onsuccess = () => {
+            document.getElementById('status-area').innerText = `Gym Library: ${countReq.result} total items learned.`;
+        };
+    }
+
+    function selectCategory(id, label) {
+        selectedCatID = id;
+        document.getElementById('cat-label').innerText = "Selected: " + label;
+        syncWithAPI(id); 
+    }
+
+    // 2. Fetch 50 fresh items and "Update" the permanent Garden
+    async function syncWithAPI(id) {
+        console.log(`Fetching fresh data for Category ${id}...`);
+        try {
+            const res = await fetch(`https://opentdb.com{id}&difficulty=easy&type=multiple`);
+            const data = await res.json();
+            if (data.results) {
+                const tx = db.transaction("questions", "readwrite");
+                const store = tx.objectStore("questions");
+                data.results.forEach(q => {
+                    q.catId = id;
+                    store.put(q); 
+                });
+                updateStatus();
+            }
+        } catch (e) { console.warn("API Sync failed. Internet required for growth."); }
+    }
+
+    async function startGame(mins) {
+        currentUser = document.getElementById('username').value.trim() || "Gym_Member";
+        localStorage.setItem('bg_last_user', currentUser);
+        if (!selectedCatID) return alert("Please select a workout category!");
+
+        // Pull ALL items for this category from the permanent Garden
+        const tx = db.transaction("questions", "readonly");
+        const store = tx.objectStore("questions");
+        const allQuestions = await new Promise(r => {
+            const req = store.getAll();
+            req.onsuccess = () => r(req.result.filter(q => q.catId === selectedCatID));
+        });
+
+        // 15-DAY FILTER: The core mental challenge engine
+        const history = JSON.parse(localStorage.getItem(`bg_hist_${currentUser}`) || "{}");
+        const now = Date.now();
+        currentPool = allQuestions.filter(q => (now - (history[q.question] || 0) > FIFTEEN_DAYS));
+
+        // Safety: If somehow 15-day rule blocks everything, use all category items
+        if(currentPool.length === 0) currentPool = allQuestions; 
+
+        score = 0; timeLeft = mins * 60;
+        document.getElementById('setup-screen').classList.add('hidden');
+        document.getElementById('game-screen').classList.remove('hidden');
+        
+        startTimer();
+        renderNext();
+    }
+
+    function renderNext() {
+        if (currentPool.length === 0) return endGame("Workout Exhausted!");
+        const q = currentPool.shift();
+        
+        // Log "Digital Receipt" to LocalStorage for 15-day rule
+        let history = JSON.parse(localStorage.getItem(`bg_hist_${currentUser}`) || "{}");
+        history[q.question] = Date.now();
+        localStorage.setItem(`bg_hist_${currentUser}`, JSON.stringify(history));
+
+        display(q);
+    }
+
+    function display(q) {
+        document.getElementById('question-text').innerText = decodeHtml(q.question);
+        document.getElementById('feedback').innerText = "";
+        const container = document.getElementById('options-container');
+        container.innerHTML = "";
+        const opts = [...q.incorrect_answers, q.correct_answer].sort(() => Math.random() - 0.5);
+
+        opts.forEach(opt => {
+            const btn = document.createElement('button');
+            btn.className = "option-btn";
+            btn.innerText = decodeHtml(opt);
+            btn.onclick = () => {
+                document.querySelectorAll('.option-btn').forEach(b => b.disabled = true);
+                if (opt === q.correct_answer) {
+                    btn.classList.add('correct'); score += 10;
+                    document.getElementById('feedback').innerText = "Correct! ✨";
+                } else {
+                    btn.classList.add('wrong');
+                    document.getElementById('feedback').innerText = "Answer: " + decodeHtml(q.correct_answer);
+                }
+                document.getElementById('score').innerText = score;
+                setTimeout(renderNext, 1500);
+            };
+            container.appendChild(btn);
+        });
+    }
+
+    function startTimer() {
+        timerInterval = setInterval(() => {
+            timeLeft--;
+            let m = Math.floor(timeLeft / 60), s = timeLeft % 60;
+            document.getElementById('timer').innerText = `${m}:${s < 10 ? '0'+s : s}`;
+            if (timeLeft <= 0) endGame();
+        }, 1000);
+    }
+
+    function endGame(msg) {
+        clearInterval(timerInterval);
+        document.getElementById('game-screen').classList.add('hidden');
+        document.getElementById('result-screen').classList.remove('hidden');
+        document.getElementById('final-score').innerText = `Score: ${score}`;
+        document.getElementById('encouragement').innerText = "Your brain is a muscle. Excellent workout today!";
+    }
+
+    function decodeHtml(html) {
+        let txt = document.createElement("textarea");
+        txt.innerHTML = html;
+        return txt.value;
+    }
+
+    function resetMemory() {
+        if(confirm("This will delete all learned questions and your 15-day history. Continue?")) {
+            localStorage.clear();
+            indexedDB.deleteDatabase("BrainGym_v1");
+            location.reload();
+        }
+    }
+
+    window.onload = () => {
+        const last = localStorage.getItem('bg_last_user');
+        if(last) document.getElementById('username').value = last;
+    };
+</script>
+</body>
+</html>
